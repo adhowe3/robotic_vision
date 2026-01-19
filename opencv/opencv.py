@@ -19,12 +19,49 @@ LINE = 3
 ABSDIFF = 4
 RGB = 5
 HSV = 6
+CORNERS = 7
 
 
 def cvMat2tkImg(arr):  # Convert OpenCV image Mat to image for display
     rgb = cv.cvtColor(arr, cv.COLOR_BGR2RGB)
     img = Image.fromarray(rgb)
     return ImageTk.PhotoImage(img)
+
+def binarization(image, l, h):
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    binary = cv.inRange(gray, l, h)
+    frame = cv.cvtColor(binary, cv.COLOR_GRAY2BGR)
+    return frame
+
+def edges(image, l, h):
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    edges = cv.Canny(gray, l, h)
+    frame = cv.cvtColor(edges, cv.COLOR_GRAY2BGR)
+    return frame
+
+def corner(image, l, h):
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    gray_f = np.float32(gray)
+
+    # Harris corner detection
+    harris = cv.cornerHarris(gray_f, 2, 3, 0.04)
+    harris = cv.dilate(harris, None)
+
+    # Threshold (slider-controlled)
+    _, harris_bin = cv.threshold(harris, l, h, 0)
+    harris_bin = np.uint8(harris_bin)
+
+    # Find centroids
+    num_labels, labels, stats, centroids = cv.connectedComponentsWithStats(harris_bin)
+    criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 100,0.001)
+    refined = cv.cornerSubPix(gray_f,np.float32(centroids),(5, 5),(-1, -1),criteria)
+    # Draw results
+    output = image.copy()
+    res = np.hstack((centroids, refined)).astype(int)
+    for x0, y0, x1, y1 in res:
+        cv.circle(output, (x0, y0), 4, (0, 0, 255), -1)   # original corner (red)
+        cv.circle(output, (x1, y1), 4, (0, 255, 0), -1)   # sub-pixel refined (green)
+    return output
 
 
 class App(Frame):
@@ -76,6 +113,7 @@ class App(Frame):
         Radiobutton(self.root, text="Binary", variable=mode, value=BINARY).pack(side='left', pady=4)
         Radiobutton(self.root, text="Edge", variable=mode, value=EDGE).pack(side='left', pady=4)
         Radiobutton(self.root, text="Line", variable=mode, value=LINE).pack(side='left', pady=4)
+        Radiobutton(self.root, text="Corners", variable=mode, value=CORNERS).pack(side='left', pady=4)
         Radiobutton(self.root, text="Abs Diff", variable=mode, value=ABSDIFF).pack(side='left', pady=4)
         Radiobutton(self.root, text="RGB", variable=mode, value=RGB).pack(side='left', pady=4)
         Radiobutton(self.root, text="HSV", variable=mode, value=HSV).pack(side='left', pady=4)
@@ -92,14 +130,25 @@ class App(Frame):
                     lThreshold = Slider1.get()
                     hThreshold = Slider2.get()
                     # Add your code here
+                    frame = binarization(frame, lThreshold, hThreshold)
+
                 elif mode.get() == EDGE:
                     lThreshold = Slider1.get()
                     hThreshold = Slider2.get()
                     # Add your code here
+                    frame = edges(frame, lThreshold, hThreshold)
+
                 elif mode.get() == LINE:
                     lThreshold = Slider1.get()
                     hThreshold = Slider2.get()
                     # Add your code here
+
+                elif mode.get() == CORNERS:
+                    lThreshold = Slider1.get()
+                    hThreshold = Slider2.get()
+                    # Add your code here
+                    frame = corner(frame, lThreshold, hThreshold)
+
                 elif mode.get() == ABSDIFF:
                     lThreshold = Slider1.get()
                     hThreshold = Slider2.get()
