@@ -40,28 +40,30 @@ def edges(image, l, h):
     return frame
 
 def corner(image, l, h):
-    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    gray_f = np.float32(gray)
-
-    # Harris corner detection
-    harris = cv.cornerHarris(gray_f, 2, 3, 0.04)
-    harris = cv.dilate(harris, None)
-
-    # Threshold (slider-controlled)
-    _, harris_bin = cv.threshold(harris, l, h, 0)
-    harris_bin = np.uint8(harris_bin)
-
-    # Find centroids
-    num_labels, labels, stats, centroids = cv.connectedComponentsWithStats(harris_bin)
-    criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 100,0.001)
-    refined = cv.cornerSubPix(gray_f,np.float32(centroids),(5, 5),(-1, -1),criteria)
-    # Draw results
-    output = image.copy()
-    res = np.hstack((centroids, refined)).astype(int)
+    img = image.copy()
+    gray = cv.cvtColor(img,cv.COLOR_BGR2GRAY)
+    
+    # find Harris corners
+    gray = np.float32(gray)
+    dst = cv.cornerHarris(gray,2,3,0.04)
+    dst = cv.dilate(dst,None)
+    ret, dst = cv.threshold(dst,l,h,0)
+    dst = np.uint8(dst)
+    
+    # find centroids
+    ret, labels, stats, centroids = cv.connectedComponentsWithStats(dst)
+    
+    # define the criteria to stop and refine the corners
+    criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 100, 0.001)
+    corners = cv.cornerSubPix(gray,np.float32(centroids),(5,5),(-1,-1),criteria)
+    centroids = centroids[1:] # remove background label
+    corners = corners[1:]
+    # Now draw them
+    res = np.hstack((centroids,corners)).astype(int)
     for x0, y0, x1, y1 in res:
-        cv.circle(output, (x0, y0), 4, (0, 0, 255), -1)   # original corner (red)
-        cv.circle(output, (x1, y1), 4, (0, 255, 0), -1)   # sub-pixel refined (green)
-    return output
+        cv.circle(img, (x0, y0), 4, (0, 0, 255), -1)   # original corner (red)
+        cv.circle(img, (x1, y1), 4, (0, 255, 0), -1)   # sub-pixel refined (green)
+    return img
 
 
 class App(Frame):
