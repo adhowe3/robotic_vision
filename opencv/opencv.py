@@ -20,7 +20,9 @@ ABSDIFF = 4
 RGB = 5
 HSV = 6
 CORNERS = 7
+CONTOURS = 8
 
+abs_dif_count = 0
 
 def cvMat2tkImg(arr):  # Convert OpenCV image Mat to image for display
     rgb = cv.cvtColor(arr, cv.COLOR_BGR2RGB)
@@ -64,6 +66,49 @@ def corner(image, l, h):
         cv.circle(img, (x0, y0), 4, (0, 0, 255), -1)   # original corner (red)
         cv.circle(img, (x1, y1), 4, (0, 255, 0), -1)   # sub-pixel refined (green)
     return img
+
+
+def lines(image, l, h):
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    edges = cv.Canny(gray, l, h, apertureSize=3)
+    lines = cv.HoughLinesP(edges, 1, np.pi/180,30,50,10)
+
+    if lines is None:
+        return image
+    
+    output = image.copy()
+    for x1, y1, x2, y2 in lines[:, 0]:
+        cv.line(output, (x1, y1), (x2, y2), (255, 0, 0), 2)
+    return output
+
+prev_gray = None
+def differencing(image):
+    global prev_gray
+
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    if prev_gray is None:
+        prev_gray = gray.copy()
+        return prev_gray
+    
+    diff = cv.absdiff(gray, prev_gray)
+    diff = cv.cvtColor(diff, cv.COLOR_GRAY2BGR)
+    prev_gray = gray
+    return diff
+
+def contours(image, l, h):
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    # gray = cv.GaussianBlur(gray, (3,3), 0)
+    _, thresh = cv.threshold(gray, l, h, cv.THRESH_BINARY)
+    contours, _ = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    output = image.copy()
+    for i in contours:
+        area = cv.contourArea(i)
+        if area >= 300:
+            x,y,w,h = cv.boundingRect(i)
+            cv.rectangle(output, (x,y), (x+w, y+h), (100,100,0), 2)
+    return output
+
 
 
 class App(Frame):
@@ -117,8 +162,7 @@ class App(Frame):
         Radiobutton(self.root, text="Line", variable=mode, value=LINE).pack(side='left', pady=4)
         Radiobutton(self.root, text="Corners", variable=mode, value=CORNERS).pack(side='left', pady=4)
         Radiobutton(self.root, text="Abs Diff", variable=mode, value=ABSDIFF).pack(side='left', pady=4)
-        Radiobutton(self.root, text="RGB", variable=mode, value=RGB).pack(side='left', pady=4)
-        Radiobutton(self.root, text="HSV", variable=mode, value=HSV).pack(side='left', pady=4)
+        Radiobutton(self.root, text="Contours", variable=mode, value=CONTOURS).pack(side='left', pady=4)
         # threading
         self.stopevent = threading.Event()
         self.thread = threading.Thread(target=self.capture, args=())
@@ -144,6 +188,7 @@ class App(Frame):
                     lThreshold = Slider1.get()
                     hThreshold = Slider2.get()
                     # Add your code here
+                    frame = lines(frame, lThreshold, hThreshold)
 
                 elif mode.get() == CORNERS:
                     lThreshold = Slider1.get()
@@ -155,14 +200,13 @@ class App(Frame):
                     lThreshold = Slider1.get()
                     hThreshold = Slider2.get()
                     # Add your code here
-                elif mode.get() == RGB:
+                    frame = differencing(frame)
+
+                elif mode.get() == CONTOURS:
                     lThreshold = Slider1.get()
                     hThreshold = Slider2.get()
                     # Add your code here
-                elif mode.get() == HSV:
-                    lThreshold = Slider1.get()
-                    hThreshold = Slider2.get()
-                    # Add your code here
+                    frame = contours(frame, lThreshold, hThreshold)
 
                 image = cvMat2tkImg(frame)
                 self.panel.configure(image=image)
