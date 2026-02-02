@@ -1,5 +1,5 @@
-./opencv/baseball_images*
+opencv/baseball_images*
 *.zip
-./env
-./camera_calibration/calibration_images
-./camera_calibration/*.jpg
+env
+camera_calibration/calibration_images
+camera_calibration/*.jpg
