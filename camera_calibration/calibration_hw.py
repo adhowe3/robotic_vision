@@ -99,11 +99,45 @@ def task_3(parameter_file):
     turn_diff = cv.absdiff(turn_im, turn_undist)
     cv.imwrite(os.path.join(OUTPUT_IMG_FOLDER,"Turn.jpg"), turn_diff)
 
-de
+def task_4(parameter_file):
+    # get the parameters from the save file
+    camera_parameters = np.load(parameter_file)
+    camera_matrix = camera_parameters["camera_matrix"]
+    distortion_matrix = camera_parameters["dist"]
+    
+    # get the input image and data_points
+    image = cv.imread("object_with_corners.jpg")
+    pixel_pts = []
+    obj_pts = []
+    with open("data_points.txt") as f:
+        for _ in range(20):
+            str = f.readline()
+            strx, stry = str.split()
+            pixel_pts.append([float(strx), float(stry)])
+        for _ in range(20):
+            str = f.readline()
+            strx, stry, strz = str.split()
+            obj_pts.append([float(strx), float(stry), float(strz)])
+    # convert to np just for convenience
+    pixel_pts = np.array(pixel_pts, dtype=np.float32)
+    obj_pts = np.array(obj_pts, dtype=np.float32)
+    success, rvec, tvec = cv.solvePnP(
+        obj_pts,
+        pixel_pts,
+        camera_matrix,
+        distortion_matrix,
+        flags=cv.SOLVEPNP_ITERATIVE
+    )
+    if success:
+        print("rvec 3x1: ", rvec)
+        print("tvec 3x1: ", tvec)
+        rvec3x3, _ = cv.Rodrigues(rvec)
+        print("rvec 3x3:", rvec3x3)
+
 
 
 if __name__ == "__main__":
     # task_2()
     # task_3(parameter_file="camera_parameters.npz")
-    task_4()
+    task_4(parameter_file="camera_parameters.npz")
 
