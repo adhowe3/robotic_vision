@@ -72,10 +72,38 @@ def task_2():
         print("fx_p:", fx_p, "fy_p:", fy_p)
         print("fx_mm:", fx_mm)
         print("fy_mm:", fy_mm)
-        print("")
         print("dist:", dist)
+        np.savez("camera_parameters.npz", camera_matrix=camera_matrix, dist=dist)
+
+def task_3(parameter_file):
+    # get the parameters from the save file
+    camera_parameters = np.load(parameter_file)
+    camera_matrix = camera_parameters["camera_matrix"]
+    print(camera_matrix)
+    distortion_matrix = camera_parameters["dist"]
+    print(distortion_matrix)
+    # read in images
+    close_im = cv.imread(os.path.join(INPUT_IMG_FOLDER, "Close.jpg"))
+    far_im = cv.imread(os.path.join(INPUT_IMG_FOLDER, "Far.jpg"))
+    turn_im = cv.imread(os.path.join(INPUT_IMG_FOLDER, "Turn.jpg"))
+    # undistort
+    close_undist = cv.undistort(close_im, camera_matrix, distortion_matrix)
+    close_diff = cv.absdiff(close_im, close_undist)
+    cv.imwrite(os.path.join(OUTPUT_IMG_FOLDER,"Close.jpg"), close_diff)
+
+    far_undist = cv.undistort(far_im, camera_matrix, distortion_matrix)
+    far_diff = cv.absdiff(far_im, far_undist)
+    cv.imwrite(os.path.join(OUTPUT_IMG_FOLDER,"Far.jpg"), far_diff)
+
+    turn_undist = cv.undistort(turn_im, camera_matrix, distortion_matrix)
+    turn_diff = cv.absdiff(turn_im, turn_undist)
+    cv.imwrite(os.path.join(OUTPUT_IMG_FOLDER,"Turn.jpg"), turn_diff)
+
+de
 
 
 if __name__ == "__main__":
+    # task_2()
+    # task_3(parameter_file="camera_parameters.npz")
+    task_4()
 
-    task_2()
