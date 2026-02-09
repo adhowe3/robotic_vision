@@ -45,7 +45,7 @@ def task_2():
     object_points = []
     image_points = []
 
-    # get image size
+    # get image size just use first image
     first_image = cv.imread( os.path.join(INPUT_IMG_FOLDER, "AR1.jpg"))
     h, w, c = first_image.shape
     image_size = (w, h)
@@ -59,7 +59,7 @@ def task_2():
         if corners is not None:
             image_points.append(corners)
             object_points.append(objp)
-    
+        
     ret, camera_matrix, dist, revecs, tvecs = cv.calibrateCamera(objectPoints=object_points, imagePoints=image_points, imageSize=image_size, cameraMatrix=None, distCoeffs=None)
     
     p_size_mm = 0.0074
