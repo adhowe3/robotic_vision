@@ -6,16 +6,17 @@ INPUT_IMG_FOLDER = "./calibration_images"
 OUTPUT_IMG_FOLDER = "./output_images"
 
 
-pattern_size = (10, 7)  # inner corners (columns, rows)
+# pattern_size = (10, 7)  # inner corners (columns, rows) UNCOMMENT FOR TASK_2()
+pattern_size = (9, 7)   # UNCOMMENT FOR TASK_5()
 square_size = 1.0
 objp = np.zeros((pattern_size[0]*pattern_size[1], 3), np.float32)
 objp[:, :2] = np.mgrid[0:pattern_size[0], 0:pattern_size[1]].T.reshape(-1,2)
 objp *= square_size
 
-def task_1(file_name):
-    infile = os.path.join(INPUT_IMG_FOLDER, file_name)
-    outfile = os.path.join(OUTPUT_IMG_FOLDER, file_name)
-    os.makedirs(OUTPUT_IMG_FOLDER, exist_ok=True)
+def task_1(file_name, input_path=INPUT_IMG_FOLDER, output_path=OUTPUT_IMG_FOLDER):
+    infile = os.path.join(input_path, file_name)
+    outfile = os.path.join(output_path, file_name)
+    os.makedirs(output_path, exist_ok=True)
     image = cv.imread(infile)
     gray_image = cv.cvtColor(image, cv.COLOR_RGB2GRAY)
     
@@ -41,28 +42,32 @@ def task_1(file_name):
 
 
 
-def task_2():
+def task_2(input_path=INPUT_IMG_FOLDER, output_path=OUTPUT_IMG_FOLDER):
     object_points = []
     image_points = []
 
     # get image size just use first image
-    first_image = cv.imread( os.path.join(INPUT_IMG_FOLDER, "AR1.jpg"))
-    h, w, c = first_image.shape
-    image_size = (w, h)
-    print(image_size)
-
-    # Loop through all files in the folder
-    for file_name in os.listdir(INPUT_IMG_FOLDER):
+    for file_name in os.listdir(input_path):
         if not file_name.lower().endswith(".jpg"):
             continue
-        corners = task_1(file_name=file_name)
+        first_image = cv.imread(os.path.join(input_path, file_name))
+        h, w, c = first_image.shape
+        image_size = (w, h)
+        print(image_size)
+        break
+
+    # Loop through all files in the folder
+    for file_name in os.listdir(input_path):
+        if not file_name.lower().endswith(".jpg"):
+            continue
+        corners = task_1(file_name, input_path, output_path)
         if corners is not None:
             image_points.append(corners)
             object_points.append(objp)
         
     ret, camera_matrix, dist, revecs, tvecs = cv.calibrateCamera(objectPoints=object_points, imagePoints=image_points, imageSize=image_size, cameraMatrix=None, distCoeffs=None)
     
-    p_size_mm = 0.0074
+    p_size_mm = 0.0074  # for task 2
     if ret:
         print("camera_matrix:", camera_matrix)
         fx_p = camera_matrix[0,0]
@@ -75,7 +80,7 @@ def task_2():
         print("dist:", dist)
         np.savez("camera_parameters.npz", camera_matrix=camera_matrix, dist=dist)
 
-def task_3(parameter_file):
+def task_3(parameter_file, input_path=INPUT_IMG_FOLDER, output_path=OUTPUT_IMG_FOLDER):
     # get the parameters from the save file
     camera_parameters = np.load(parameter_file)
     camera_matrix = camera_parameters["camera_matrix"]
@@ -83,21 +88,21 @@ def task_3(parameter_file):
     distortion_matrix = camera_parameters["dist"]
     print(distortion_matrix)
     # read in images
-    close_im = cv.imread(os.path.join(INPUT_IMG_FOLDER, "Close.jpg"))
-    far_im = cv.imread(os.path.join(INPUT_IMG_FOLDER, "Far.jpg"))
-    turn_im = cv.imread(os.path.join(INPUT_IMG_FOLDER, "Turn.jpg"))
+    close_im = cv.imread(os.path.join(input_path, "Close.jpg"))
+    far_im = cv.imread(os.path.join(input_path, "Far.jpg"))
+    turn_im = cv.imread(os.path.join(input_path, "Turn.jpg"))
     # undistort
     close_undist = cv.undistort(close_im, camera_matrix, distortion_matrix)
     close_diff = cv.absdiff(close_im, close_undist)
-    cv.imwrite(os.path.join(OUTPUT_IMG_FOLDER,"Close.jpg"), close_diff)
+    cv.imwrite(os.path.join(output_path,"Close.jpg"), close_diff)
 
     far_undist = cv.undistort(far_im, camera_matrix, distortion_matrix)
     far_diff = cv.absdiff(far_im, far_undist)
-    cv.imwrite(os.path.join(OUTPUT_IMG_FOLDER,"Far.jpg"), far_diff)
+    cv.imwrite(os.path.join(output_path,"Far.jpg"), far_diff)
 
     turn_undist = cv.undistort(turn_im, camera_matrix, distortion_matrix)
     turn_diff = cv.absdiff(turn_im, turn_undist)
-    cv.imwrite(os.path.join(OUTPUT_IMG_FOLDER,"Turn.jpg"), turn_diff)
+    cv.imwrite(os.path.join(output_path,"Turn.jpg"), turn_diff)
 
 def task_4(parameter_file):
     # get the parameters from the save file
@@ -135,9 +140,28 @@ def task_4(parameter_file):
         print("rvec 3x3:", rvec3x3)
 
 
+def task_5():
+    task_2(input_path="my_calibration_images", output_path="my_output_images")
+
+# very similar to task3, just on one image though
+def task_6(parameter_file, input_path="my_calibration_images", output_path="my_output_images"):
+    # get the parameters from the save file
+    camera_parameters = np.load(parameter_file)
+    camera_matrix = camera_parameters["camera_matrix"]
+    print(camera_matrix)
+    distortion_matrix = camera_parameters["dist"]
+    print(distortion_matrix)
+    # read in images
+    first_im = cv.imread(os.path.join(input_path, "1.jpg"))
+    # undistort
+    first_undist = cv.undistort(first_im, camera_matrix, distortion_matrix)
+    first_diff = cv.absdiff(first_im, first_undist)
+    cv.imwrite(os.path.join(output_path,"1.jpg"), first_diff)
 
 if __name__ == "__main__":
     # task_2()
     # task_3(parameter_file="camera_parameters.npz")
-    task_4(parameter_file="camera_parameters.npz")
+    # task_4(parameter_file="camera_parameters.npz")
+    # task_5()
+    task_6(parameter_file="camera_parameters.npz")
 
