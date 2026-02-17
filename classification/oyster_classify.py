@@ -4,12 +4,35 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torchvision.utils import save_image, make_grid
+from torch.utils.data import WeightedRandomSampler
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import cv2 as cv
+from PIL import Image
 
 MEAN = 0.5
 STD = 0.5
+
+class CleanAndCropOyster:
+    def __init__(self, background_path):
+        # Load background in grayscale
+        self.bg = cv.imread(background_path, cv.IMREAD_GRAYSCALE)
+
+    def __call__(self, img):
+        img_np = np.array(img.convert('L'))
+        diff = cv.absdiff(img_np, self.bg)
+        _, mask = cv.threshold(diff, 20, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+        # cv.imwrite("output_20_thresh.png", diff)
+        coords = cv.findNonZero(mask)
+        if coords is not None:
+            x, y, w, h = cv.boundingRect(coords)
+            # Crop the image
+            img_np = diff[y:y+h, x:x+w]
+        
+        # cv.imwrite("output_cropped.png", img_np)
+        return Image.fromarray(img_np)
+
 
 class OysterClassifier(nn.Module):
     def __init__(self):
@@ -21,7 +44,7 @@ class OysterClassifier(nn.Module):
         self.adaptive_pool = nn.AdaptiveAvgPool2d((7,7))
         self.dropout1 = nn.Dropout(0.25)
         self.dropout2 = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(3136, 256)
+        self.fc1 = nn.Linear(64*7*7, 256)
         self.fc2 = nn.Linear(256, 4)
 
     def forward(self, x):
@@ -30,7 +53,7 @@ class OysterClassifier(nn.Module):
         x = F.max_pool2d(x, 2)
         x = self.dropout1(x)
 
-        x = self.adaptive_pool(x)   # will make (Batch, 64,7,7)
+        x = self.adaptive_pool(x)   # will make (Batch, 128,7,7)
         x = torch.flatten(x, 1)     # 64*7*7 = 3136
         x = self.fc1(x)
         x = F.relu(x)
@@ -72,6 +95,7 @@ def test(model, device, test_loader):
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
+    return test_loss
 
 
 def save_dataset_sample(dataloader, filename="oyster_sample.png"):
@@ -136,47 +160,60 @@ def create_confusion_matrix(model, device, test_loader, class_names, file_name):
     
     plt.savefig(file_name, dpi=300)
     print(f"Confusion matrix saved as {file_name}")
-    plt.show()
 
 
 if __name__ == "__main__":
-    IS_TRAIN_MODE = True   # toggle for train or load saved model
+    IS_TRAIN_MODE = False   # toggle for train or load saved model
     MODEL_PATH = "oyster_classifier.pt"
+    BG_PATH = "oyster_shell/background.tif"
 
     ################## handle data loading and modification #####################
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = OysterClassifier().to(device)
     im_size = 128
     train_transform = transforms.Compose([
+        CleanAndCropOyster(BG_PATH),
         transforms.Resize((im_size,im_size)), # MAYBE TRY MORE RECTANGLE SHAPE?
-        transforms.Grayscale(num_output_channels=1),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2),
+        transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
+        transforms.ColorJitter(brightness=0.3), # Varies brightness between 70% and 130%
         transforms.ToTensor(),
         transforms.Normalize(mean=[MEAN], std=[STD]) # Standard ImageNet stats
     ])
 
     # Use the same normalization for testing
     test_transform = transforms.Compose([
+        CleanAndCropOyster(BG_PATH),
         transforms.Resize((im_size, im_size)),
-        transforms.Grayscale(num_output_channels=1),
         transforms.ToTensor(),
         transforms.Normalize(mean=[MEAN], std=[STD])
     ])
+
 
     # create the datsets with ImageFolder, automatically does the folder classification for us
     train_dataset = datasets.ImageFolder(root="oyster_shell/train", transform=train_transform)
     test_dataset = datasets.ImageFolder(root='oyster_shell/test', transform=test_transform)
 
+    # set up sampler for test_loader imbalance
+    targets = train_dataset.targets # List of labels for every image
+    class_counts = np.bincount(targets) # Count how many in each class
+    weights = 1. / class_counts
+    sample_weights = weights[targets]
+    sampler = WeightedRandomSampler(
+        weights=sample_weights, 
+        num_samples=len(sample_weights), 
+        replacement=True
+    )
+
     # load the datasets
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, sampler=sampler, shuffle=False)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False)
 
     dataiter = iter(train_loader)
     images, labels = next(dataiter)
 
     #show the images
-    save_dataset_sample(train_loader, "check_oyster.png")
+    # save_dataset_sample(train_loader, "check_oyster.png")
 
     if IS_TRAIN_MODE==True:
 
@@ -184,16 +221,20 @@ if __name__ == "__main__":
         print("Starting training -- using: ", device)
         batch_size = 32
         epochs = 100
-        lr = 0.001
+        lr = 0.0005
 
         optimizer = optim.Adam(model.parameters(), lr=lr)
+        best_loss = 100000
         for epoch in range(1, epochs+1):
             train(model, device, train_loader, optimizer, epoch)
-            test(model, device, test_loader)
+            curr_loss = test(model, device, test_loader)
+            if(curr_loss < best_loss):
+                # save the model weights
+                torch.save(model.state_dict(), MODEL_PATH)
+                print(f"***Model weights saved to {MODEL_PATH}***")
+                best_loss = curr_loss
+
         
-        # save the model weights
-        torch.save(model.state_dict(), MODEL_PATH)
-        print(f"Model weights saved to {MODEL_PATH}")
 
     ############################## Load the model for analysis ############################
     elif IS_TRAIN_MODE==False:
