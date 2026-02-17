@@ -1,0 +1,14 @@
+# Image Processing & Math
+opencv-python
+numpy
+matplotlib
+scipy
+
+# Deep Learning (PyTorch)
+torch
+torchvision
+torchaudio
+
+# Utilities
+tqdm
+scikit-learn
