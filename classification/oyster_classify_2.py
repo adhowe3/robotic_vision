@@ -34,7 +34,6 @@ def preprocess_oyster(image_path, bg_path):
     diff = cv2.absdiff(img_blur, bg)
     gray_diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
     _, mask = cv2.threshold(gray_diff, 5, 255, cv2.THRESH_BINARY)
-    # _, mask = cv2.threshold(gray_diff, 10, 255, cv2.THRESH_BINARY+ cv2.THRESH_OTSU)
     
     return img, mask
 
@@ -52,9 +51,10 @@ def get_oyster_metrics(mask):
     hull = cv2.convexHull(cnt)
     hull_area = cv2.contourArea(hull)
     solidity = float(area) / hull_area if hull_area > 0 else 0
+
+    # Elongation
     rect = cv2.minAreaRect(cnt)
     width, height = rect[1]
-    # Ensure we don't divide by zero and handle orientation
     major = max(width, height)
     minor = min(width, height)
     elongation = major / (minor + 1e-5)
@@ -114,7 +114,7 @@ def visualize_oyster_analysis(img, mask, metrics):
     
     plt.subplot(1, 2, 2)
     # Added Solidity to the title for easy checking
-    plt.title(f"Contour Analysis\nComp: {metrics['compactness']:.2f} | Elong: {metrics['elongation']:.2f} | Solid: {metrics['solidity']:.2f}")
+    plt.title(f"Contour Analysis\nComp: {metrics['compactness']:.2f} | Elong: {metrics['elongation']:.2f}")
     plt.imshow(cv2.cvtColor(vis_img, cv2.COLOR_BGR2RGB))
     
     plt.tight_layout()
@@ -137,14 +137,14 @@ def extract_all_features(data_dir, bg_path):
 
             # Use your successful preprocessing from Step 3
             img, mask = preprocess_oyster(img_path, bg_path) 
-            metrics = get_oyster_metrics(mask=mask)
+            metrics = get_oyster_metrics(mask)
             
             if metrics:
                 # Add the label to our dictionary
                 metrics['label'] = label
                 metrics['filename'] = img_name
                 # Remove the contour array so it can be saved in a table
-                del metrics['contour'] 
+                # del metrics['contour'] 
                 features_list.append(metrics)
                 
     return pd.DataFrame(features_list)
@@ -338,56 +338,56 @@ if __name__ == "__main__":
     y_test = pd.Categorical(df_test['label']).codes
     classes = sorted(df_train['label'].unique())
 
-    # # 2. Initialize the Model
-    # # 'multi:softprob' is for multi-class classification
-    # # we use 'n_estimators' to give it enough trees to learn
-    # sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
-    # model_xgb = xgb.XGBClassifier(
-    #     n_estimators=100,
-    #     max_depth=6,
-    #     learning_rate=0.25,
-    #     objective='multi:softprob',
-    #     num_class=4,
-    #     random_state=42
-    # )
+    # 2. Initialize the Model
+    # 'multi:softprob' is for multi-class classification
+    # we use 'n_estimators' to give it enough trees to learn
+    sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
+    model_xgb = xgb.XGBClassifier(
+        n_estimators=100,
+        max_depth=6,
+        learning_rate=0.05,
+        objective='multi:softprob',
+        num_class=4,
+        random_state=42
+    )
 
-    # # 3. Fit the Model
-    # model_xgb.fit(X_train, y_train, sample_weight=sample_weights)
+    # 3. Fit the Model
+    model_xgb.fit(X_train, y_train, sample_weight=sample_weights)
 
-    # # 4. Predict and Evaluate
-    # y_pred = model_xgb.predict(X_test)
+    # 4. Predict and Evaluate
+    y_pred = model_xgb.predict(X_test)
 
-    # print(f"XGBoost Accuracy: {accuracy_score(y_test, y_pred):.2%}")
-    # print("\nClassification Report:")
-    # print(classification_report(y_test, y_pred, target_names=sorted(df_train['label'].unique())))
+    print(f"XGBoost Accuracy: {accuracy_score(y_test, y_pred):.2%}")
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred, target_names=sorted(df_train['label'].unique())))
 
-    # plot_xgb_confusion_matrix(model_xgb, X_test, y_test, classes)
+    plot_xgb_confusion_matrix(model_xgb, X_test, y_test, classes)
 
-    # xgb.plot_importance(model_xgb)
-    # plt.title("What makes an oyster? Feature Importance")
-    # plt.savefig("xgb_importance.png")
+    xgb.plot_importance(model_xgb)
+    plt.title("What makes an oyster? Feature Importance")
+    plt.savefig("xgb_importance.png")
 
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import classification_report, accuracy_score
 
     # 1. Initialize Random Forest
     # 'balanced_subsample' calculates weights at every tree level, which is great for overlap
-    model_rf = RandomForestClassifier(
-        n_estimators=200, 
-        max_depth=6, 
-        class_weight='balanced_subsample',
-        random_state=42
-    )
+    # model_rf = RandomForestClassifier(
+    #     n_estimators=200, 
+    #     max_depth=6, 
+    #     class_weight='balanced_subsample',
+    #     random_state=42
+    # )
 
-    # 2. Fit the model
-    model_rf.fit(X_train, y_train)
+    # # 2. Fit the model
+    # model_rf.fit(X_train, y_train)
 
-    # 3. Predict
-    y_pred_rf = model_rf.predict(X_test)
+    # # 3. Predict
+    # y_pred_rf = model_rf.predict(X_test)
 
-    # 4. Print Results
-    print(f"Random Forest Total Accuracy: {accuracy_score(y_test, y_pred_rf):.2%}")
-    print("\nDetailed Classification Report:")
-    print(classification_report(y_test, y_pred_rf, target_names=classes))
+    # # 4. Print Results
+    # print(f"Random Forest Total Accuracy: {accuracy_score(y_test, y_pred_rf):.2%}")
+    # print("\nDetailed Classification Report:")
+    # print(classification_report(y_test, y_pred_rf, target_names=classes))
 
 
