@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from sklearn.metrics import confusion_matrix
 import xgboost as xgb
 from sklearn.metrics import classification_report, accuracy_score
+from sklearn.utils.class_weight import compute_sample_weight
 
 ROOT_DIR = "oyster_shell/"
 BG_PATH = os.path.join(ROOT_DIR, "background.tif")
@@ -61,15 +62,24 @@ def get_oyster_metrics(mask):
     
     # Equivalent Diameter
     equiv_diameter = np.sqrt(4 * area / np.pi)
+    M = cv2.moments(cnt)
+    hu_moments = cv2.HuMoments(M).flatten()
     
-    return {
+    # Log transform to bring tiny values into a usable range for the model
+    # We use absolute values to avoid log of negative numbers
+    for i in range(0, 7):
+        hu_moments[i] = -1 * np.sign(hu_moments[i]) * np.log10(np.abs(hu_moments[i]) + 1e-20)
+
+    # Combine everything into the dictionary
+    results = {
         "compactness": compactness,
         "elongation": elongation,
         "solidity": solidity,
         "extent": extent,
-        "equiv_dia": equiv_diameter,
-        "contour": cnt
+        "contour": cnt # Keep for visualization
     }
+    
+    return results
 
 
 def visualize_oyster_analysis(img, mask, metrics):
@@ -238,6 +248,24 @@ def plot_confusion_matrix(model, test_loader, class_names):
     plt.title('Oyster Classification Confusion Matrix')
     plt.savefig("oyster_confusion.png")
 
+def plot_xgb_confusion_matrix(model, X_test, y_test, class_names):
+    # 1. Get predictions from XGBoost
+    # y_pred will be an array of integers (0, 1, 2, 3)
+    y_pred = model.predict(X_test)
+    
+    # 2. Generate the matrix
+    cm = confusion_matrix(y_test, y_pred)
+    
+    # 3. Plotting
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Greens', 
+                xticklabels=class_names, yticklabels=class_names)
+    
+    plt.xlabel('Predicted Label', fontsize=12, fontweight='bold')
+    plt.ylabel('True Label', fontsize=12, fontweight='bold')
+    plt.title('Oyster Classification: XGBoost Confusion Matrix', fontsize=14)
+    plt.savefig("xgb_confusion.png")
+
 
 if __name__ == "__main__":
     example_img = os.path.join(TRAIN_DIR, "Good/125.tif")
@@ -261,8 +289,7 @@ if __name__ == "__main__":
     # Scaling the data
     # We "fit" on train and "transform" on test to prevent data leakage
     scaler = StandardScaler()
-    feature_cols = ['compactness', 'elongation', 'solidity', 'extent', 'equiv_dia']
-
+    feature_cols = ['compactness', 'elongation', 'solidity', 'extent']
     df_train[feature_cols] = scaler.fit_transform(df_train[feature_cols])
     df_test[feature_cols] = scaler.transform(df_test[feature_cols])
 
@@ -295,10 +322,47 @@ if __name__ == "__main__":
     print("Train Mapping:", train_ds.label_map)
     print("Test Mapping:", test_ds.label_map)
 
-    train_and_evaluate(model=model, train_loader=train_loader, optimizer=optimizer, test_loader=test_loader, epochs=500)
+    # train_and_evaluate(model=model, train_loader=train_loader, optimizer=optimizer, test_loader=test_loader, epochs=500)
     # class_names should be sorted alphabetically to match our Label Encoder
     # e.g., ['bad', 'banana', 'good', 'irregular']
+    # classes = sorted(df_train['label'].unique())
+    # plot_confusion_matrix(model, test_loader, classes)
+
+    #### XGBOOST #####
+    X_train = df_train[feature_cols]
+    y_train = pd.Categorical(df_train['label']).codes
+
+    X_test = df_test[feature_cols]
+    y_test = pd.Categorical(df_test['label']).codes
+
+    # 2. Initialize the Model
+    # 'multi:softprob' is for multi-class classification
+    # we use 'n_estimators' to give it enough trees to learn
+    sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
+    model_xgb = xgb.XGBClassifier(
+        n_estimators=100,
+        max_depth=6,
+        learning_rate=0.25,
+        objective='multi:softprob',
+        num_class=4,
+        random_state=42
+    )
+
+    # 3. Fit the Model
+    model_xgb.fit(X_train, y_train, sample_weight=sample_weights)
+
+    # 4. Predict and Evaluate
+    y_pred = model_xgb.predict(X_test)
+
+    print(f"XGBoost Accuracy: {accuracy_score(y_test, y_pred):.2%}")
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred, target_names=sorted(df_train['label'].unique())))
+
     classes = sorted(df_train['label'].unique())
-    plot_confusion_matrix(model, test_loader, classes)
+    plot_xgb_confusion_matrix(model_xgb, X_test, y_test, classes)
+
+    xgb.plot_importance(model_xgb)
+    plt.title("What makes an oyster? Feature Importance")
+    plt.savefig("xgb_importance.png")
 
 
