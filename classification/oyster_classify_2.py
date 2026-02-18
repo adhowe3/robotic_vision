@@ -14,6 +14,9 @@ from sklearn.metrics import confusion_matrix
 import xgboost as xgb
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.utils.class_weight import compute_sample_weight
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report
+
 
 ROOT_DIR = "oyster_shell/"
 BG_PATH = os.path.join(ROOT_DIR, "background.tif")
@@ -30,7 +33,7 @@ def preprocess_oyster(image_path, bg_path):
     img_blur = cv2.GaussianBlur(img, (5, 5), 0)
     diff = cv2.absdiff(img_blur, bg)
     gray_diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-    _, mask = cv2.threshold(gray_diff, 30, 255, cv2.THRESH_BINARY)
+    _, mask = cv2.threshold(gray_diff, 5, 255, cv2.THRESH_BINARY)
     # _, mask = cv2.threshold(gray_diff, 10, 255, cv2.THRESH_BINARY+ cv2.THRESH_OTSU)
     
     return img, mask
@@ -62,19 +65,17 @@ def get_oyster_metrics(mask):
     
     # Equivalent Diameter
     equiv_diameter = np.sqrt(4 * area / np.pi)
-    M = cv2.moments(cnt)
-    hu_moments = cv2.HuMoments(M).flatten()
-    
-    # Log transform to bring tiny values into a usable range for the model
-    # We use absolute values to avoid log of negative numbers
-    for i in range(0, 7):
-        hu_moments[i] = -1 * np.sign(hu_moments[i]) * np.log10(np.abs(hu_moments[i]) + 1e-20)
+
+    # roughness
+    hull_perimeter = cv2.arcLength(hull, True)
+    roughness = perimeter / (hull_perimeter + 1e-5)
 
     # Combine everything into the dictionary
     results = {
         "compactness": compactness,
         "elongation": elongation,
         "solidity": solidity,
+        "roughness": roughness,
         "extent": extent,
         "contour": cnt # Keep for visualization
     }
@@ -152,9 +153,9 @@ def extract_all_features(data_dir, bg_path):
 def plot_oyster_features(df):
     plt.figure(figsize=(10, 6))
     # Plot Elongation vs Compactness
-    sns.scatterplot(data=df, x='elongation', y='solidity', hue='label', style='label', s=100)
+    sns.scatterplot(data=df, x='elongation', y='roughness', hue='label', style='label', s=100)
     
-    plt.title("Oyster Shape Analysis: Elongation vs Compactness")
+    plt.title("Oyster Shape Analysis: Elongation vs Roughness")
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.savefig("pd_feature_map.png")
 
@@ -282,6 +283,7 @@ if __name__ == "__main__":
 
     print("Extracting Train Features...")
     df_train = extract_all_features(os.path.join(ROOT_DIR, "train"), BG_PATH)
+    plot_oyster_features(df_train)
 
     print("Extracting Test Features...")
     df_test = extract_all_features(os.path.join(ROOT_DIR, "test"), BG_PATH)
@@ -289,7 +291,7 @@ if __name__ == "__main__":
     # Scaling the data
     # We "fit" on train and "transform" on test to prevent data leakage
     scaler = StandardScaler()
-    feature_cols = ['compactness', 'elongation', 'solidity', 'extent']
+    feature_cols = ['compactness', 'elongation', 'solidity', 'roughness', 'extent']
     df_train[feature_cols] = scaler.fit_transform(df_train[feature_cols])
     df_test[feature_cols] = scaler.transform(df_test[feature_cols])
 
@@ -334,35 +336,58 @@ if __name__ == "__main__":
 
     X_test = df_test[feature_cols]
     y_test = pd.Categorical(df_test['label']).codes
+    classes = sorted(df_train['label'].unique())
 
-    # 2. Initialize the Model
-    # 'multi:softprob' is for multi-class classification
-    # we use 'n_estimators' to give it enough trees to learn
-    sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
-    model_xgb = xgb.XGBClassifier(
-        n_estimators=100,
-        max_depth=6,
-        learning_rate=0.25,
-        objective='multi:softprob',
-        num_class=4,
+    # # 2. Initialize the Model
+    # # 'multi:softprob' is for multi-class classification
+    # # we use 'n_estimators' to give it enough trees to learn
+    # sample_weights = compute_sample_weight(class_weight='balanced', y=y_train)
+    # model_xgb = xgb.XGBClassifier(
+    #     n_estimators=100,
+    #     max_depth=6,
+    #     learning_rate=0.25,
+    #     objective='multi:softprob',
+    #     num_class=4,
+    #     random_state=42
+    # )
+
+    # # 3. Fit the Model
+    # model_xgb.fit(X_train, y_train, sample_weight=sample_weights)
+
+    # # 4. Predict and Evaluate
+    # y_pred = model_xgb.predict(X_test)
+
+    # print(f"XGBoost Accuracy: {accuracy_score(y_test, y_pred):.2%}")
+    # print("\nClassification Report:")
+    # print(classification_report(y_test, y_pred, target_names=sorted(df_train['label'].unique())))
+
+    # plot_xgb_confusion_matrix(model_xgb, X_test, y_test, classes)
+
+    # xgb.plot_importance(model_xgb)
+    # plt.title("What makes an oyster? Feature Importance")
+    # plt.savefig("xgb_importance.png")
+
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import classification_report, accuracy_score
+
+    # 1. Initialize Random Forest
+    # 'balanced_subsample' calculates weights at every tree level, which is great for overlap
+    model_rf = RandomForestClassifier(
+        n_estimators=200, 
+        max_depth=6, 
+        class_weight='balanced_subsample',
         random_state=42
     )
 
-    # 3. Fit the Model
-    model_xgb.fit(X_train, y_train, sample_weight=sample_weights)
+    # 2. Fit the model
+    model_rf.fit(X_train, y_train)
 
-    # 4. Predict and Evaluate
-    y_pred = model_xgb.predict(X_test)
+    # 3. Predict
+    y_pred_rf = model_rf.predict(X_test)
 
-    print(f"XGBoost Accuracy: {accuracy_score(y_test, y_pred):.2%}")
-    print("\nClassification Report:")
-    print(classification_report(y_test, y_pred, target_names=sorted(df_train['label'].unique())))
-
-    classes = sorted(df_train['label'].unique())
-    plot_xgb_confusion_matrix(model_xgb, X_test, y_test, classes)
-
-    xgb.plot_importance(model_xgb)
-    plt.title("What makes an oyster? Feature Importance")
-    plt.savefig("xgb_importance.png")
+    # 4. Print Results
+    print(f"Random Forest Total Accuracy: {accuracy_score(y_test, y_pred_rf):.2%}")
+    print("\nDetailed Classification Report:")
+    print(classification_report(y_test, y_pred_rf, target_names=classes))
 
 
