@@ -11,6 +11,27 @@ STEREO_L_IMG_FOLDER = "./braden_image_calibration/SL"
 PRACTICE_SL = "practice_img/SL"
 PRACTICE_SR = "practice_img/SR"
 
+def rotationMatrixToEulerXYZ(R):
+    """
+    Convert rotation matrix to XYZ Euler angles
+    Returns angles in radians
+    """
+    sy = np.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
+
+    singular = sy < 1e-6
+
+    if not singular:
+        x = np.arctan2(R[2, 1], R[2, 2])
+        y = np.arctan2(-R[2, 0], sy)
+        z = np.arctan2(R[1, 0], R[0, 0])
+    else:
+        # Gimbal lock
+        x = np.arctan2(-R[1, 2], R[1, 1])
+        y = np.arctan2(-R[2, 0], sy)
+        z = 0
+
+    return np.array([x, y, z])
+
 def load_camera_parameters(npz_file):
     data = np.load(npz_file)
     K = data["camera_matrix"]
@@ -42,7 +63,6 @@ def stereo_calibrate_from_files(
     CAMERA_PARAM_LEFT,
     CAMERA_PARAM_RIGHT
 ):
-    print("HERE1")
     # Load intrinsics
     K1, dist1 = load_camera_parameters(CAMERA_PARAM_LEFT)
     K2, dist2 = load_camera_parameters(CAMERA_PARAM_RIGHT)
@@ -74,7 +94,6 @@ def stereo_calibrate_from_files(
         image_points_L.append(corners_L)
         image_points_R.append(corners_R)
 
-    print("HERE2")
     # Image size
     sample_img = cv.imread(os.path.join(left_folder, left_images[0]))
     h, w = sample_img.shape[:2]
@@ -82,7 +101,6 @@ def stereo_calibrate_from_files(
 
     flags = cv.CALIB_USE_INTRINSIC_GUESS
     criteria = (cv.TERM_CRITERIA_MAX_ITER + cv.TERM_CRITERIA_EPS, 100, 1e-5)
-    print("HERE3")
 
     # calculate the stereoCalibrate values
     rms, _, _, _, _, R, T, E, F = cv.stereoCalibrate(
@@ -95,32 +113,25 @@ def stereo_calibrate_from_files(
         criteria=criteria,
         flags=flags
     )
-    print("HERE4")
-
-        # --- Rotation conversions ---
-    # rvec, _ = cv.Rodrigues(R)
-    # angle = np.linalg.norm(rvec)
-    # axis = rvec.flatten() / angle
-    # print("Rotation angle (deg):", np.degrees(angle))
-    # print("Rotation axis:", axis)
-    angle = 1 # TO DO FIX
-    rvec = 1
+    rvec, _ = cv.Rodrigues(R)
+    euler_rad = rotationMatrixToEulerXYZ(R)
+    euler_deg = np.degrees(euler_rad)
 
     print("Stereo RMS error:", rms)
-
     print("\nRotation matrix (3x3):")
     print(R)
-
-    print("\nRotation vector (3x1) [radians]:")
-    print(rvec)
-
     print("\nTranslation vector T (3x1):")
     print(T)
-
     print("Essential matrix E:\n", E)
     print("Fundamental matrix F:\n", F)
+    print("\nRotation vector (3x1) [radians]:")
+    print(rvec)
+    print("\nEuler angles (XYZ order):")
+    print(f"Rotation about X: {euler_deg[0]:.6f}°")
+    print(f"Rotation about Y: {euler_deg[1]:.6f}°")
+    print(f"Rotation about Z: {euler_deg[2]:.6f}°")
 
-    return R, rvec, angle, T, E, F
+    return R, rvec, euler_deg, T, E, F
 
 
 def draw_points(img, points, color):
@@ -136,14 +147,6 @@ def draw_epilines(img, lines, color):
         x1, y1 = w, int(-(c + a * w) / b)
         cv.line(img, (x0, y0), (x1, y1), color, 2)
     
-
-def draw_horizontal_lines(img, step=50):
-    out = img.copy()
-    h = out.shape[0]
-    for y in range(step, h, step):
-        cv.line(out, (0, y), (out.shape[1], y), (0, 255, 0), 1)
-    return out
-
 
 if __name__ == "__main__":
     CAMERA_PARAMETERS_LEFT = "camera_parameters_left.npz"
@@ -231,51 +234,4 @@ if __name__ == "__main__":
     plt.savefig("epipolar_lines.png")
 
     ##################### Task 4 ###############################
-    imgL = cv.imread(left_image_path)
-    imgR = cv.imread(right_image_path)
-
-    h, w = imgL.shape[:2]
-    image_size = (w, h)
-    ## camera parameters
-    k_left, dist_left = load_camera_parameters(CAMERA_PARAMETERS_LEFT)
-    k_right, dist_right = load_camera_parameters(CAMERA_PARAMETERS_RIGHT)
-
-    R1, R2, P1, P2, Q, roi1, roi2 = cv.stereoRectify(
-        k_left, dist_left,
-        k_right, dist_right,
-        image_size,
-        R, T,
-        flags=cv.CALIB_ZERO_DISPARITY,
-        alpha=0
-    )
-
-    mapLx, mapLy = cv.initUndistortRectifyMap(
-        k_left, dist_left, R1, P1, image_size, cv.CV_32FC1
-    )
-
-    mapRx, mapRy = cv.initUndistortRectifyMap(
-        k_right, dist_right, R2, P2, image_size, cv.CV_32FC1
-    )
-
-    imgL_rect = cv.remap(imgL, mapLx, mapLy, cv.INTER_LINEAR)
-    imgR_rect = cv.remap(imgR, mapRx, mapRy, cv.INTER_LINEAR)
-
-    imgL_rect_lines = draw_horizontal_lines(imgL_rect)
-    imgR_rect_lines = draw_horizontal_lines(imgR_rect)
-    cv.imwrite("imgL_rect_lines.png", imgL_rect_lines)
-    cv.imwrite("imgR_rect_lines.png", imgR_rect_lines)
-    cv.imwrite("imgL_rect.png", imgL_rect)
-    cv.imwrite("imgR_rect.png", imgR_rect)
-
-    diffL = cv.absdiff(imgL_rect, imgL)
-    diffR = cv.absdiff(imgR_rect, imgR)
-    cv.imwrite("diffL.png", diffL)
-    cv.imwrite("diffR.png", diffR)
-
-    print("Rrect (3x3):\n", R1)
-    rvec_rect, _ = cv.Rodrigues(R1)
-
-    rx, ry, rz = np.degrees(rvec_rect.flatten())
-
-    print("Rrect (3x1) [radians]:\n", rvec_rect)
-    print(f"Rotation about X, Y, Z [degrees]:\nRx={rx:.6f}, Ry={ry:.6f}, Rz={rz:.6f}")
+    
