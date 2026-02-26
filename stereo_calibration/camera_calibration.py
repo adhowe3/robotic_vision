@@ -4,17 +4,17 @@ import numpy as np
 
 INPUT_IMG_FOLDER = "./input_images"
 OUTPUT_IMG_FOLDER = "./output_images"
-LEFT_IMG_FOLDER = "./my_image_calibration/20260225135624/L"
-RIGHT_IMG_FOLDER = "./my_image_calibration/20260225135857/R"
-STEREO_R_IMG_FOLDER = "./my_image_calibration/20260225140003/R"
-STEREO_L_IMG_FOLDER = "./my_image_calibration/20260225140003/L"
+LEFT_IMG_FOLDER = "./braden_image_calibration/L"
+RIGHT_IMG_FOLDER = "./braden_image_calibration/R"
+STEREO_R_IMG_FOLDER = "./braden_image_calibration/SR"
+STEREO_L_IMG_FOLDER = "./braden_image_calibration/SL"
 
 PRACTICE_L = "practice_img/L"
 PRACTICE_R = "practice_img/R"
 
 pattern_size = (10, 7)  # inner corners (columns, rows) UNCOMMENT FOR TASK_2()
-# square_size = 101.28  # this is in millimeters (the EB large board)
-square_size = 50.8  # this is in millimeters (The practice images)
+square_size = 101.28  # this is in millimeters (the EB large board)
+# square_size = 50.8  # this is in millimeters (The practice images)
 objp = np.zeros((pattern_size[0]*pattern_size[1], 3), np.float32)
 objp[:, :2] = np.mgrid[0:pattern_size[0], 0:pattern_size[1]].T.reshape(-1,2)
 objp *= square_size
@@ -51,6 +51,7 @@ def task_0(file_name, input_path, output_path):
 def task_1(input_path, output_path):
     object_points = []
     image_points = []
+    # file_type = ".bmp"
     file_type = ".png"
 
     # get image size just use first image
@@ -80,7 +81,7 @@ def task_1(input_path, output_path):
         fy_p = camera_matrix[1,1]
         print("fx_p:", fx_p, "fy_p:", fy_p)
         print("dist:", dist)
-        np.savez("camera_parameters_right.npz", camera_matrix=camera_matrix, dist=dist)
+        np.savez("camera_parameters_test_right.npz", camera_matrix=camera_matrix, dist=dist)
 
 
 if __name__ == "__main__":
