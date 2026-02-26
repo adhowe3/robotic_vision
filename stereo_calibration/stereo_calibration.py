@@ -99,7 +99,7 @@ def stereo_calibrate_from_files(
     h, w = sample_img.shape[:2]
     image_size = (w, h)
 
-    flags = cv.CALIB_USE_INTRINSIC_GUESS
+    flags = 0
     criteria = (cv.TERM_CRITERIA_MAX_ITER + cv.TERM_CRITERIA_EPS, 100, 1e-5)
 
     # calculate the stereoCalibrate values
@@ -146,15 +146,20 @@ def draw_epilines(img, lines, color):
         x0, y0 = 0, int(-c / b)
         x1, y1 = w, int(-(c + a * w) / b)
         cv.line(img, (x0, y0), (x1, y1), color, 2)
-    
+
+def draw_horizontal_lines(img, step=50):
+    out = img.copy()
+    for y in range(step, img.shape[0], step):
+        cv.line(out, (0, y), (img.shape[1], y), (0, 255, 0), 1)
+    return out
 
 if __name__ == "__main__":
     CAMERA_PARAMETERS_LEFT = "camera_parameters_left.npz"
     CAMERA_PARAMETERS_RIGHT = "camera_parameters_right.npz"
     # CAMERA_PARAMETERS_LEFT = "camera_parameters_test_left.npz"
     # CAMERA_PARAMETERS_RIGHT = "camera_parameters_test_right.npz"
-    square_size = 101.28 # in mm
-    # square_size = 50.8 # in mm
+    square_size = 3.985 # in inch
+    # square_size = 2 # in inch
     pattern_size = (10, 7) # dim of chess board, internal square intersections
     R, T, rvec, angles_deg, E, F = stereo_calibrate_from_files(left_folder=STEREO_L_IMG_FOLDER, right_folder=STEREO_R_IMG_FOLDER, 
                                              pattern_size=pattern_size, square_size=square_size, 
@@ -234,4 +239,58 @@ if __name__ == "__main__":
     plt.savefig("epipolar_lines.png")
 
     ##################### Task 4 ###############################
-    
+    h, w = imgL.shape[:2]
+    image_size = (w, h)
+
+    R1, R2, P1, P2, Q, roi1, roi2 = cv.stereoRectify(
+        k_left, dist_left,
+        k_right, dist_right,
+        image_size,
+        R, T,
+        flags=cv.CALIB_ZERO_DISPARITY,
+        alpha=1
+    )
+
+    mapL1, mapL2 = cv.initUndistortRectifyMap(
+        k_left, dist_left, R1, P1, image_size, cv.CV_16SC2
+    )
+
+    mapR1, mapR2 = cv.initUndistortRectifyMap(
+        k_right, dist_right, R2, P2, image_size, cv.CV_16SC2
+    )
+
+    rectL = cv.remap(imgL, mapL1, mapL2, cv.INTER_LINEAR)
+    rectR = cv.remap(imgR, mapR1, mapR2, cv.INTER_LINEAR)
+
+    rectL_lines = draw_horizontal_lines(rectL)
+    rectR_lines = draw_horizontal_lines(rectR)
+
+
+    diffL = cv.absdiff(rectL, imgL)
+    diffR = cv.absdiff(rectR, imgR)
+
+    # save figs
+    cv.imwrite("original_left.png", imgL)
+    cv.imwrite("original_right.png", imgR)
+
+    cv.imwrite("rectified_left_lines.png", rectL_lines)
+    cv.imwrite("rectified_right_lines.png", rectR_lines)
+
+    cv.imwrite("absdiff_left.png", diffL)
+    cv.imwrite("absdiff_right.png", diffR)
+
+    # rotation stuff
+    Rrect = R1  # Left rectification rotation matrix
+    print("\nRectification Rotation Matrix Rrect (3x3):")
+    print(Rrect)
+    rvec_rect, _ = cv.Rodrigues(Rrect)
+    euler_rad = rotationMatrixToEulerXYZ(Rrect)
+    euler_deg = np.degrees(euler_rad)
+
+    print("\nRectification rotation vector rvec (3x1) [radians]:")
+    print(rvec_rect)
+
+    print("\nRectification rotation about X, Y, Z [degrees]:")
+    print(f"Rx: {euler_deg[0]:.6f}°")
+    print(f"Ry: {euler_deg[1]:.6f}°")
+    print(f"Rz: {euler_deg[2]:.6f}°")
