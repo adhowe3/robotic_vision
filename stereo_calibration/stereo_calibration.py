@@ -51,7 +51,7 @@ def find_corners(image_path, pattern_size):
         print("corners not found for ", image_path)
         return None
     criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    corners = cv.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+    corners = cv.cornerSubPix(gray, corners, (5, 5), (-1, -1), criteria)
     return corners
 
 
@@ -99,11 +99,11 @@ def stereo_calibrate_from_files(
     h, w = sample_img.shape[:2]
     image_size = (w, h)
 
-    flags = 0
+    flags = cv.CALIB_FIX_INTRINSIC
     criteria = (cv.TERM_CRITERIA_MAX_ITER + cv.TERM_CRITERIA_EPS, 100, 1e-5)
 
     # calculate the stereoCalibrate values
-    rms, _, _, _, _, R, T, E, F = cv.stereoCalibrate(
+    rms, stereo_mtxL, stereo_distL, stereo_mtxR, stereo_distR, R, T, E, F = cv.stereoCalibrate(
         object_points,
         image_points_L,
         image_points_R,
@@ -130,7 +130,6 @@ def stereo_calibrate_from_files(
     print(f"Rotation about X: {euler_deg[0]:.6f}°")
     print(f"Rotation about Y: {euler_deg[1]:.6f}°")
     print(f"Rotation about Z: {euler_deg[2]:.6f}°")
-
     return R, rvec, euler_deg, T, E, F
 
 
@@ -154,11 +153,11 @@ def draw_horizontal_lines(img, step=50):
     return out
 
 if __name__ == "__main__":
-    CAMERA_PARAMETERS_LEFT = "camera_parameters_left.npz"
-    CAMERA_PARAMETERS_RIGHT = "camera_parameters_right.npz"
+    CAMERA_PARAMETERS_LEFT = "camera_parameters_left_j.npz"
+    CAMERA_PARAMETERS_RIGHT = "camera_parameters_right_j.npz"
     # CAMERA_PARAMETERS_LEFT = "camera_parameters_test_left.npz"
     # CAMERA_PARAMETERS_RIGHT = "camera_parameters_test_right.npz"
-    square_size = 3.985 # in inch
+    square_size = 4 # in inch
     # square_size = 2 # in inch
     pattern_size = (10, 7) # dim of chess board, internal square intersections
     R, T, rvec, angles_deg, E, F = stereo_calibrate_from_files(left_folder=STEREO_L_IMG_FOLDER, right_folder=STEREO_R_IMG_FOLDER, 
@@ -239,24 +238,39 @@ if __name__ == "__main__":
     plt.savefig("epipolar_lines.png")
 
     ##################### Task 4 ###############################
+    left_image_path = os.path.join(STEREO_L_IMG_FOLDER, "0.png")
+    right_image_path = os.path.join(STEREO_R_IMG_FOLDER, "0.png")
+    imgL = cv.imread(left_image_path, cv.IMREAD_GRAYSCALE)
+    imgR = cv.imread(right_image_path, cv.IMREAD_GRAYSCALE)
     h, w = imgL.shape[:2]
     image_size = (w, h)
 
+    data = np.load(f"camera_params_stereo_j.npz")
+    stereo_mtxL=data["stereo_mtxL"]
+    stereo_distL=data["stereo_distL"]
+    stereo_mtxR=data["stereo_mtxR"]
+    stereo_distR=data["stereo_distR"]
+    R=data["R"]
+    T=data["T"]
+    E=data["E"]
+    F=data["F"]
+    
+
     R1, R2, P1, P2, Q, roi1, roi2 = cv.stereoRectify(
-        k_left, dist_left,
-        k_right, dist_right,
+        stereo_mtxL, stereo_distL,
+        stereo_mtxR, stereo_distR,
         image_size,
         R, T,
         flags=cv.CALIB_ZERO_DISPARITY,
-        alpha=1
+        alpha=0
     )
 
     mapL1, mapL2 = cv.initUndistortRectifyMap(
-        k_left, dist_left, R1, P1, image_size, cv.CV_16SC2
+        k_left, dist_left, R1, P1, image_size, cv.CV_32FC1
     )
 
     mapR1, mapR2 = cv.initUndistortRectifyMap(
-        k_right, dist_right, R2, P2, image_size, cv.CV_16SC2
+        k_right, dist_right, R2, P2, image_size, cv.CV_32FC1
     )
 
     rectL = cv.remap(imgL, mapL1, mapL2, cv.INTER_LINEAR)
