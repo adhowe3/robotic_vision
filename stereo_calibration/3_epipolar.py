@@ -5,16 +5,18 @@ import cv2
 import numpy as np
 
 def load_params(side):
-    data = np.load(f"camera_parameters_{side}.npz")
+    data = np.load(f"camera_parameters_{side}_j.npz")
     mtx = data["camera_matrix"]
     dist = data["dist"]
     return mtx, dist
+
 
 def load_image_names(side):
     # image_dir = f"practice_img/{side}"
     image_dir = f"braden_image_calibration/{side}"
     image_files = sorted(list(im for im in os.listdir(image_dir)))
     return image_files, image_dir
+
 
 def draw_epilines(img, lines, color=(0,255,0)):
     r, c = img.shape[:2]
@@ -26,16 +28,16 @@ def draw_epilines(img, lines, color=(0,255,0)):
         cv2.line(img, (x0,y0), (x1,y1), color, 1)
     return img
 
+
 def get_random_points(img):
     H, W = img.shape[:2]
-
     num_points = 4
-    # Make sure on left side of image 
+    # points on left side of image
     ptsR = np.zeros((num_points, 2), dtype=np.float32)
     ptsR[:, 0] = np.random.randint(W/5, W/2, size=num_points)  # x coordinates
     ptsR[:, 1] = np.random.randint(H/5, H-H/5, size=num_points)  # y coordinates
 
-    # Make sure on right side of image
+    # points on right side of image
     ptsL = np.zeros((num_points, 2), dtype=np.float32)
     ptsL[:, 0] = np.random.randint(W/2, W-W/5, size=num_points)  # x coordinates
     ptsL[:, 1] = np.random.randint(H/5, H-H/5, size=num_points)  # y coordinates
@@ -49,6 +51,7 @@ image_files_R, image_dir_R = load_image_names("SR")
 mtx_L, dist_L = load_params("left")
 mtx_R, dist_R = load_params("right")
 
+# load parameters
 data = np.load(f"camera_params_stereo.npz")
 stereo_mtxL=data["stereo_mtxL"]
 stereo_distL=data["stereo_distL"]
@@ -59,23 +62,16 @@ T=data["T"]
 E=data["E"]
 F=data["F"]
 
-
+# loop through data set and save images
 for file_L, file_R in zip(image_files_L, image_files_R):
-    # print(f"{file_L} -- {file_R}")
     if "22" in file_L:
         continue
 
     imgL = frame = cv2.imread(os.path.join(image_dir_L, file_L), cv2.IMREAD_GRAYSCALE)
     imgR = frame = cv2.imread(os.path.join(image_dir_R, file_R), cv2.IMREAD_GRAYSCALE)
-
-    # imgL_undist = imgL
-    # imgR_undist = imgR
     imgL_undist = cv2.undistort(imgL, mtx_L, dist_L)
     imgR_undist = cv2.undistort(imgR, mtx_R, dist_R)
 
-    # Example: manually defined points
-    # ptsL = np.array([[100, 150], [200, 120], [250, 300], [400, 250]], dtype=np.float32)
-    # ptsR = np.array([[120, 140], [220, 130], [270, 290], [410, 260]], dtype=np.float32)
     ptsL, ptsR = get_random_points(imgL_undist)
 
     # Draw circles for visualization
@@ -86,12 +82,6 @@ for file_L, file_R in zip(image_files_L, image_files_R):
     for pt in ptsR:
         cv2.circle(color_R, tuple(pt.astype(int)), 5, (255,0,0), -1)  # Blue
     
-
-    # ptsL -> lines in right image
-    # lines_in_R = cv2.computeCorrespondEpilines(ptsL.reshape(-1,1,2), 1, F)
-
-    # # ptsR -> lines in left image
-    # lines_in_L = cv2.computeCorrespondEpilines(ptsR.reshape(-1,1,2), 2, F)
     lines_in_L = cv2.computeCorrespondEpilines(ptsR.reshape(-1,1,2), 2, F)
     lines_in_R = cv2.computeCorrespondEpilines(ptsL.reshape(-1,1,2), 1, F)
 

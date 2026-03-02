@@ -2,6 +2,7 @@ import cv2 as cv
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import cv2
 
 INPUT_IMG_FOLDER = "./input_images"
 OUTPUT_IMG_FOLDER = "./output_images"
@@ -10,27 +11,6 @@ STEREO_L_IMG_FOLDER = "./braden_image_calibration/SL"
 
 PRACTICE_SL = "practice_img/SL"
 PRACTICE_SR = "practice_img/SR"
-
-def rotationMatrixToEulerXYZ(R):
-    """
-    Convert rotation matrix to XYZ Euler angles
-    Returns angles in radians
-    """
-    sy = np.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
-
-    singular = sy < 1e-6
-
-    if not singular:
-        x = np.arctan2(R[2, 1], R[2, 2])
-        y = np.arctan2(-R[2, 0], sy)
-        z = np.arctan2(R[1, 0], R[0, 0])
-    else:
-        # Gimbal lock
-        x = np.arctan2(-R[1, 2], R[1, 1])
-        y = np.arctan2(-R[2, 0], sy)
-        z = 0
-
-    return np.array([x, y, z])
 
 def load_camera_parameters(npz_file):
     data = np.load(npz_file)
@@ -53,6 +33,13 @@ def find_corners(image_path, pattern_size):
     criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     corners = cv.cornerSubPix(gray, corners, (5, 5), (-1, -1), criteria)
     return corners
+
+
+def show_image(title, img):
+    cv2.imshow(title, img)
+    key = cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    return key
 
 
 def stereo_calibrate_from_files(
@@ -113,24 +100,29 @@ def stereo_calibrate_from_files(
         criteria=criteria,
         flags=flags
     )
-    rvec, _ = cv.Rodrigues(R)
-    euler_rad = rotationMatrixToEulerXYZ(R)
-    euler_deg = np.degrees(euler_rad)
 
-    print("Stereo RMS error:", rms)
-    print("\nRotation matrix (3x3):")
-    print(R)
-    print("\nTranslation vector T (3x1):")
-    print(T)
+    # save the stereo parameters
+    np.savez(f"camera_params_stereo.npz", 
+         stereo_mtxL=stereo_mtxL,
+         stereo_distL=stereo_distL,
+         stereo_mtxR=stereo_mtxR,
+         stereo_distR=stereo_distR,
+         R=R,
+         T=T,
+         E=E,
+         F=F)
+
+    rvec, _ = cv.Rodrigues(R)
+    rvec_deg = np.degrees(rvec) # convert to degrees
+
+    print("Stereo RMS error:\n", rms)
+    print("\nRotation matrix (3x3):\n", R)
+    print("\nTranslation vector T (3x1):\n", T)
     print("Essential matrix E:\n", E)
     print("Fundamental matrix F:\n", F)
-    print("\nRotation vector (3x1) [radians]:")
-    print(rvec)
-    print("\nEuler angles (XYZ order):")
-    print(f"Rotation about X: {euler_deg[0]:.6f}°")
-    print(f"Rotation about Y: {euler_deg[1]:.6f}°")
-    print(f"Rotation about Z: {euler_deg[2]:.6f}°")
-    return R, rvec, euler_deg, T, E, F
+    print("\nRotation vector (3x1) [radians]:\n", rvec)
+    print("Rotation vector (3x1) in degrees:\n", rvec_deg)
+    return R, rvec, T, E, F
 
 
 def draw_points(img, points, color):
@@ -149,7 +141,7 @@ def draw_epilines(img, lines, color):
 def draw_horizontal_lines(img, step=50):
     out = img.copy()
     for y in range(step, img.shape[0], step):
-        cv.line(out, (0, y), (img.shape[1], y), (0, 255, 0), 1)
+        cv.line(out, (0, y), (img.shape[1], y), (0, 0, 0), 1)
     return out
 
 if __name__ == "__main__":
@@ -160,7 +152,7 @@ if __name__ == "__main__":
     square_size = 4 # in inch
     # square_size = 2 # in inch
     pattern_size = (10, 7) # dim of chess board, internal square intersections
-    R, T, rvec, angles_deg, E, F = stereo_calibrate_from_files(left_folder=STEREO_L_IMG_FOLDER, right_folder=STEREO_R_IMG_FOLDER, 
+    R, T, rvec, E, F = stereo_calibrate_from_files(left_folder=STEREO_L_IMG_FOLDER, right_folder=STEREO_R_IMG_FOLDER, 
                                              pattern_size=pattern_size, square_size=square_size, 
                                              CAMERA_PARAM_LEFT=CAMERA_PARAMETERS_LEFT, CAMERA_PARAM_RIGHT=CAMERA_PARAMETERS_RIGHT)
     
@@ -187,8 +179,8 @@ if __name__ == "__main__":
     corners_L = left_corners.reshape(-1, 2)
     corners_R = right_corners.reshape(-1, 2)
     idx_tl = 0
-    idx_tr = cols - 1
-    idx_bl = (rows - 1) * cols
+    idx_tr = (rows - 3)* cols - 1
+    idx_bl = (rows - 2) * cols
     idx_br = rows * cols - 1
 
     # get the points for left and right images, the four corners of chess board
@@ -219,8 +211,8 @@ if __name__ == "__main__":
     lines_in_R = lines_in_R.reshape(-1,3)
     lines_in_L = lines_in_L.reshape(-1,3)
 
-    draw_epilines(imgR_undist, lines_in_R, (0, 255, 0))  # green
-    draw_epilines(imgL_undist, lines_in_L, (0, 255, 0))
+    draw_epilines(imgL_undist, lines_in_L, (255, 0, 0)) # blue
+    draw_epilines(imgR_undist, lines_in_R, (0, 0, 255))  # red
 
     # plot the results
     plt.figure(figsize=(12, 5))
@@ -237,7 +229,7 @@ if __name__ == "__main__":
 
     plt.savefig("epipolar_lines.png")
 
-    ##################### Task 4 ###############################
+    ####################### Task 4 ###############################
     left_image_path = os.path.join(STEREO_L_IMG_FOLDER, "0.png")
     right_image_path = os.path.join(STEREO_R_IMG_FOLDER, "0.png")
     imgL = cv.imread(left_image_path, cv.IMREAD_GRAYSCALE)
@@ -254,57 +246,71 @@ if __name__ == "__main__":
     T=data["T"]
     E=data["E"]
     F=data["F"]
-    
 
-    R1, R2, P1, P2, Q, roi1, roi2 = cv.stereoRectify(
+    R1, R2, P1, P2, Q, roi1, roi2 = cv2.stereoRectify(
         stereo_mtxL, stereo_distL,
         stereo_mtxR, stereo_distR,
         image_size,
         R, T,
-        flags=cv.CALIB_ZERO_DISPARITY,
+        flags=cv2.CALIB_ZERO_DISPARITY,
         alpha=0
     )
 
-    mapL1, mapL2 = cv.initUndistortRectifyMap(
-        k_left, dist_left, R1, P1, image_size, cv.CV_32FC1
+    mapLx, mapLy = cv2.initUndistortRectifyMap(
+        stereo_mtxL, stereo_distL, R1, P1,
+        image_size, cv2.CV_32FC1
     )
 
-    mapR1, mapR2 = cv.initUndistortRectifyMap(
-        k_right, dist_right, R2, P2, image_size, cv.CV_32FC1
+    mapRx, mapRy = cv2.initUndistortRectifyMap(
+        stereo_mtxR, stereo_distR, R2, P2,
+        image_size, cv2.CV_32FC1
     )
 
-    rectL = cv.remap(imgL, mapL1, mapL2, cv.INTER_LINEAR)
-    rectR = cv.remap(imgR, mapR1, mapR2, cv.INTER_LINEAR)
+    ############ Print some things ############
+    print("Rectification rotation matrix R1 (3x3):\n", R1)
+    print("Rectification rotation matrix R2 (3x3):\n", R2)
+    # Left camera rectification rotation
+    rvec1, _ = cv2.Rodrigues(R1)
+    rvec1_deg = np.degrees(rvec1)
 
-    rectL_lines = draw_horizontal_lines(rectL)
-    rectR_lines = draw_horizontal_lines(rectR)
+    # Right camera rectification rotation
+    rvec2, _ = cv2.Rodrigues(R2)
+    rvec2_deg = np.degrees(rvec2)
 
+    print("R1 rotation vector (degrees):\n", rvec1_deg)
+    print("R2 rotation vector (degrees):\n", rvec2_deg)
 
-    diffL = cv.absdiff(rectL, imgL)
-    diffR = cv.absdiff(rectR, imgR)
+    print("P1:\n", P1)
+    print("P2:\n", P2)
 
-    # save figs
-    cv.imwrite("original_left.png", imgL)
-    cv.imwrite("original_right.png", imgR)
+    print("Q\n:", Q)
 
-    cv.imwrite("rectified_left_lines.png", rectL_lines)
-    cv.imwrite("rectified_right_lines.png", rectR_lines)
+    ################################################
 
-    cv.imwrite("absdiff_left.png", diffL)
-    cv.imwrite("absdiff_right.png", diffR)
+    rectified_L = cv2.remap(imgL, mapLx, mapLy, cv2.INTER_LINEAR)
+    rectified_R = cv2.remap(imgR, mapRx, mapRy, cv2.INTER_LINEAR)
 
-    # rotation stuff
-    Rrect = R1  # Left rectification rotation matrix
-    print("\nRectification Rotation Matrix Rrect (3x3):")
-    print(Rrect)
-    rvec_rect, _ = cv.Rodrigues(Rrect)
-    euler_rad = rotationMatrixToEulerXYZ(Rrect)
-    euler_deg = np.degrees(euler_rad)
+    rectified_L = cv2.cvtColor(rectified_L, cv2.COLOR_GRAY2RGB)
+    rectified_R = cv2.cvtColor(rectified_R, cv2.COLOR_GRAY2RGB)
 
-    print("\nRectification rotation vector rvec (3x1) [radians]:")
-    print(rvec_rect)
+    rectified_L_with_lines = draw_horizontal_lines(rectified_L.copy())
+    rectified_R_with_lines = draw_horizontal_lines(rectified_R.copy())
+    rectified_lines = np.hstack((rectified_L_with_lines, rectified_R_with_lines))
+    key = show_image("Rectified", rectified_lines)
+    cv2.imwrite("my_rectified_lines.png", rectified_lines)
 
-    print("\nRectification rotation about X, Y, Z [degrees]:")
-    print(f"Rx: {euler_deg[0]:.6f}°")
-    print(f"Ry: {euler_deg[1]:.6f}°")
-    print(f"Rz: {euler_deg[2]:.6f}°")
+    color_L = cv2.cvtColor(imgL, cv2.COLOR_GRAY2RGB)
+    color_R = cv2.cvtColor(imgR, cv2.COLOR_GRAY2RGB)
+
+    orig = np.hstack((color_L, color_R))
+    rectified = np.hstack((rectified_L, rectified_R))
+    combined = np.vstack((orig, rectified))
+    key = show_image("Orig, Rectified", combined)
+    cv2.imwrite("my_orig.png", orig)
+    cv2.imwrite("my_rectified.png", rectified)
+
+    diffL = cv2.absdiff(color_L, rectified_L)
+    diffR = cv2.absdiff(color_R, rectified_R)
+    diff = np.hstack((diffL, diffR))
+    key = show_image("Diffed", diff)
+    cv2.imwrite("my_diff.png", diff)
