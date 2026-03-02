@@ -13,7 +13,7 @@ PRACTICE_L = "practice_img/L"
 PRACTICE_R = "practice_img/R"
 
 pattern_size = (10, 7)  # inner corners (columns, rows) UNCOMMENT FOR TASK_2()
-square_size = 3.985  # this is in inches (the EB large board)
+square_size = 2  # this is in inches (the EB large board)
 # square_size = 2  # this is in inches (The practice images)
 objp = np.zeros((pattern_size[0]*pattern_size[1], 3), np.float32)
 objp[:, :2] = np.mgrid[0:pattern_size[0], 0:pattern_size[1]].T.reshape(-1,2)
@@ -81,8 +81,8 @@ def task_1(input_path, output_path):
         fy_p = camera_matrix[1,1]
         print("fx_p:", fx_p, "fy_p:", fy_p)
         print("dist:", dist)
-        np.savez("camera_parameters_test_test_left.npz", camera_matrix=camera_matrix, dist=dist)
+        np.savez("camera_parameters_test_right.npz", camera_matrix=camera_matrix, dist=dist)
 
 
 if __name__ == "__main__":
-    task_1(input_path=PRACTICE_L, output_path="output_path")
+    task_1(input_path=PRACTICE_R, output_path="output_path")
