@@ -8,6 +8,28 @@ objp = np.zeros((pattern_size[0]*pattern_size[1], 3), np.float32)
 objp[:, :2] = np.mgrid[0:pattern_size[0], 0:pattern_size[1]].T.reshape(-1,2)
 objp *= square_size
 
+def compute_chessboard_distance(points_left, points_right):
+    """
+    Computes distance between first two 3D points
+    for both left and right camera frames.
+
+    Expected distance: 9 squares * square_size inches = 36 inches
+    """
+    expected_distance = 9 * square_size  # 36 inches
+    # Distance in left camera frame
+    d_left = np.linalg.norm(points_left[1] - points_left[0])
+    # Distance in right camera frame
+    d_right = np.linalg.norm(points_right[1] - points_right[0])
+    print("Expected distance:", expected_distance, "inches")
+    print("Measured distance (Left frame):", d_left, "inches")
+    print("Measured distance (Right frame):", d_right, "inches")
+
+    print("Left error:", abs(d_left - expected_distance), "inches")
+    print("Right error:", abs(d_right - expected_distance), "inches")
+
+    return d_left, d_right
+
+
 def get_chess_board_corners(file_name, input_path=".", output_path="output"):
     infile = os.path.join(input_path, file_name)
     outfile = os.path.join(output_path, file_name)
@@ -260,3 +282,6 @@ if __name__ == "__main__":
     print("3D points w.r.t RIGHT camera:")
     print(points3D_right)
     verify_rigid_transform(points3D_left, points3D_right, R, T)
+
+    ## compute real world distance between points ##
+    compute_chessboard_distance(points3D_left, points3D_right)
