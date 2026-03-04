@@ -8,19 +8,6 @@ objp = np.zeros((pattern_size[0]*pattern_size[1], 3), np.float32)
 objp[:, :2] = np.mgrid[0:pattern_size[0], 0:pattern_size[1]].T.reshape(-1,2)
 objp *= square_size
 
-# keep the start-end index images, remove the rest from the dataset 
-def keep_image_range(base_path, start, end):
-    for side in ["L", "R"]:
-        folder = os.path.join(base_path, side)
-
-        for file in os.listdir(folder):
-            if file.endswith(".png"):
-                idx = int(file.split(".")[0])
-
-                if idx < start or idx > end:
-                    os.remove(os.path.join(folder, file))
-
-
 def get_chess_board_corners(file_name, input_path=".", output_path="output"):
     infile = os.path.join(input_path, file_name)
     outfile = os.path.join(output_path, file_name)
@@ -223,7 +210,6 @@ def verify_rigid_transform(points_left, points_right, R, T):
 
 ################# main ######################
 if __name__ == "__main__":
-    # keep_image_range("ball_images", 21, 65) # remove images 0-20 and 65-99
     left_corners = get_chess_board_corners("L_0.png")
     right_corners = get_chess_board_corners("R_0.png")
     left_outer_corners = get_outer_corners(left_corners)
