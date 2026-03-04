@@ -78,7 +78,7 @@ def differencing(image, prev_ref_gray):
     diff = cv2.absdiff(gray, prev_ref_gray)
     return diff
 
-def contours(diff):
+def contours(diff, original):
     # 1. Blur first
     diff_blur = cv2.GaussianBlur(diff, (7,7), 0)
     # 2. Threshold
@@ -91,7 +91,8 @@ def contours(diff):
         mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
     if not contours_list:
-        return diff, (0,0)
+        print("no contours found")
+        return original, (0,0)
 
     # 5. Select largest contour
     largest = max(contours_list, key=cv2.contourArea)
@@ -101,15 +102,15 @@ def contours(diff):
     center = (int(x), int(y))
     radius = int(radius)
     # 7. Draw result
-    output = diff.copy()
-    output = cv2.cvtColor(diff, cv2.COLOR_GRAY2BGR)
+    output = original.copy()
+    # output = cv2.cvtColor(original, cv2.COLOR_GRAY2BGR)
     cv2.circle(output, center, radius, (0,255,255), 2)
     cv2.circle(output, center, 3, (0,0,255), -1)
     return output, center 
 
 def detect_baseball(image, prev_ref_gray):
     diff = differencing(image, prev_ref_gray)
-    cont, center = contours(diff)
+    cont, center = contours(diff, image)
     return cont, center
 
 ################# main ######################
