@@ -171,6 +171,47 @@ def compute_global_scale(z_points, x_points, y_points):
 
     return z_range, max(x_range, y_range)+80
 
+def plot_z_x(z_points, x_points, z_range, x_range):
+    z = np.array(z_points)
+    x = np.array(x_points)
+
+    # ---- LINEAR FIT (Degree 1) ----
+    # This finds the 'm' and 'b' in x = mZ + b
+    coeffs = np.polyfit(z, x, 1) 
+    p = np.poly1d(coeffs)
+
+    # 1. Generate fit line from the back of the range to 0
+    z_fit = np.linspace(z_range, 0, 400)
+    x_fit = p(z_fit)
+
+    plt.figure()
+    
+    # Plot predicted path (straight line)
+    plt.plot(z_fit, x_fit, linewidth=2, color='red', label='Predicted Path')
+    
+    # Plot ball locations as hollow circles
+    plt.scatter(z, x, s=50, facecolors='none', edgecolors='blue', 
+                linewidths=1.5, label='Ball Trajectory')
+
+    # 2. Mark the intercept at Z=0
+    x_at_zero = p(0)
+
+    # 3. Viewport Control
+    plt.xlim(z_range, 0) # Z=0 on the right
+    
+    x_mid = (max(x) + min(x)) / 2
+    plt.ylim(x_mid + x_range/2, x_mid - x_range/2)
+
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.xlabel("Z (Depth)")
+    plt.ylabel("X (Horizontal)")
+    plt.title("Top Down View: Path to Z=0")
+    
+    plt.savefig("z_x.png")
+    plt.close()
+
+    return x_at_zero
+
 
 def plot_z_y(z_points, y_points, z_range, y_range):
     z = np.array(z_points)
@@ -186,7 +227,7 @@ def plot_z_y(z_points, y_points, z_range, y_range):
 
     plt.figure()
     plt.plot(z_fit, y_fit, linewidth=2, color='red', label='Predicted Path')
-    plt.scatter(z, y, s=30, label='Ball Trajectory')
+    plt.scatter(z, y, s=30, facecolors='none', edgecolors='blue', label='Ball Trajectory')
 
     # 2. Explicitly plot the intercept at Z=0
     y_at_zero = p(0)
@@ -303,11 +344,11 @@ if __name__ == "__main__":
     )
 
     # pass in y_range to both to keep plots scaled the same
-    # x_zero = plot_z_x(plot_points_z, plot_points_x, z_range, y_range)
+    x_zero = plot_z_x(plot_points_z, plot_points_x, z_range, y_range)
     y_zero = plot_z_y(plot_points_z, plot_points_y, z_range, y_range)
 
     print("Predicted intercept at Z=0:")
-    # print("X =", x_zero)
+    print("X =", x_zero)
     print("Y =", y_zero)
         
 
