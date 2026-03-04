@@ -10,3 +10,6 @@ stereo_calibration/output_path
 stereo_calibration/braden_image_calibration
 stereo_calibration/*png
 stereo_calibration/*pdf
+
+
+trajectory/ball_images

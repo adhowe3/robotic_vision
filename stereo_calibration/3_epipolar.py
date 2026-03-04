@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 def load_params(side):
-    data = np.load(f"camera_parameters_{side}_j.npz")
+    data = np.load(f"camera_parameters_{side}.npz")
     mtx = data["camera_matrix"]
     dist = data["dist"]
     return mtx, dist
