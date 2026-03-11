@@ -220,4 +220,4 @@ plt.title("Time To Impact Estimate")
 
 plt.grid()
 
-plt.savefig("output1/ttc_vs_frame.png")
+plt.savefig("ttc_vs_frame_1.png")

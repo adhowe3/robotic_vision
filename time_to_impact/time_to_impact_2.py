@@ -6,7 +6,7 @@ frames = 18
 motion_per_frame = 15.25  # mm
 
 # impact frame from Task 1
-impact_frame = 61.9
+impact_frame = 42.27
 
 frame_numbers = np.arange(frames)
 

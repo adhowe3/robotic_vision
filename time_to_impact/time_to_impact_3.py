@@ -135,7 +135,7 @@ plt.title("Object Distance vs Frame (Known Object Size & Camera Parameters)")
 
 plt.grid()
 
-plt.savefig("output3/distance_vs_frame.png")
+plt.savefig("distance_vs_frame_3.png")
 
 print("Saved tracking images and distance plot to output3/")
 print("distance from last image: ", distances[-1], "mm")
