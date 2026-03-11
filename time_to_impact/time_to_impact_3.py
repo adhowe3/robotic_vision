@@ -1,15 +1,21 @@
 import cv2
 import numpy as np
 import glob
-import matplotlib.pyplot as plt
-import re
 import os
+import re
+import matplotlib.pyplot as plt
 
 fx = 825.0900600547
 object_width_mm = 59
 
+left_feature = 133
+right_feature = 150
+
 os.makedirs("output3", exist_ok=True)
 
+# -----------------------------
+# Load images
+# -----------------------------
 image_paths = glob.glob("images/T*.jpg")
 
 def frame_number(path):
@@ -17,84 +23,104 @@ def frame_number(path):
 
 image_paths = sorted(image_paths, key=frame_number)
 
-distances = []
-frames = []
-
-for i, path in enumerate(image_paths):
-
-    img = cv2.imread(path)
+images = []
+for p in image_paths:
+    img = cv2.imread(p)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    images.append((img, gray))
 
-    # moderate blur
-    # blur = cv2.GaussianBlur(gray, (11,11), 0)
-    # cv2.imwrite(f"output3/T{i+1}_blur.png", blur)
-    blur = cv2.GaussianBlur(gray, (5,5), 0)
-    _, bw = cv2.threshold(blur, 10, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    cv2.imwrite(f"output3/T{i+1}_bw.png", bw)
+# -----------------------------
+# Detect features in first frame
+# -----------------------------
+feature_params = dict(
+    maxCorners=200,
+    qualityLevel=0.01,
+    minDistance=10,
+    blockSize=7
+)
 
-    # sobel vertical edges (strong for can sides)
-    sobelx = cv2.Sobel(bw, cv2.CV_64F, 1, 0, ksize=5)
+first_color, first_gray = images[0]
 
-    sobelx = np.absolute(sobelx)
-    sobelx = np.uint8(sobelx)
+p0 = cv2.goodFeaturesToTrack(first_gray, mask=None, **feature_params)
 
-    cv2.imwrite(f"output3/T{i+1}_sobel.png", sobelx)
+# select chosen features
+selected_pts = np.array([
+    p0[left_feature],
+    p0[right_feature]
+])
 
-    # threshold to get edges
-    _, edges = cv2.threshold(sobelx, 50, 255, cv2.THRESH_BINARY)
+# -----------------------------
+# Lucas Kanade parameters
+# -----------------------------
+lk_params = dict(
+    winSize=(21,21),
+    maxLevel=3,
+    criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01)
+)
 
-    cv2.imwrite(f"output3/T{i+1}_edges.png", edges)
+prev_gray = first_gray
+prev_pts = selected_pts
 
-    # -----------------------------
-    # Morphological closing
-    # -----------------------------
-    kernel = np.ones((15,15), np.uint8)
-    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+frames = []
+pixel_widths = []
 
-    # -----------------------------
-    # Find contours
-    # -----------------------------
-    contours, _ = cv2.findContours(
-        edges,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
+# -----------------------------
+# Track features
+# -----------------------------
+for i in range(1, len(images)):
+
+    color, gray = images[i]
+
+    next_pts, status, err = cv2.calcOpticalFlowPyrLK(
+        prev_gray,
+        gray,
+        prev_pts,
+        None,
+        **lk_params
     )
 
-    if len(contours) == 0:
-        continue
+    p_left = next_pts[0].ravel()
+    p_right = next_pts[1].ravel()
 
-    # filter by area (ignore tiny text contours)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    width_pixels = np.linalg.norm(p_left - p_right)
 
-    largest = contours[0]
+    frames.append(i)
+    pixel_widths.append(width_pixels)
 
-    x,y,w,h = cv2.boundingRect(largest)
+    # visualization
+    vis = color.copy()
+
+    cv2.circle(vis, tuple(p_left.astype(int)), 6, (0,255,0), -1)
+    cv2.circle(vis, tuple(p_right.astype(int)), 6, (0,255,0), -1)
+
+    cv2.line(vis,
+             tuple(p_left.astype(int)),
+             tuple(p_right.astype(int)),
+             (255,0,0),2)
+
+    cv2.putText(vis,
+                f"Width: {width_pixels:.2f}px",
+                (40,40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255,255,255),
+                2)
+
+    cv2.imwrite(f"output3/track_{i:03d}.png", vis)
+
+    prev_gray = gray.copy()
+    prev_pts = next_pts
+
+# -----------------------------
+# Convert pixel width -> distance
+# -----------------------------
+distances = []
+
+for w in pixel_widths:
 
     Z = (fx * object_width_mm) / w
 
     distances.append(Z)
-    frames.append(i)
-
-    # -----------------------------
-    # Visualization
-    # -----------------------------
-    vis = img.copy()
-
-    cv2.rectangle(vis,(x,y),(x+w,y+h),(0,255,0),3)
-
-    cv2.putText(
-        vis,
-        f"W={w}px  Z={Z:.1f}mm",
-        (30,40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (0,255,0),
-        2
-    )
-
-    cv2.imwrite(f"output2/T{i+1}_detect.png", vis)
-
-    print(f"Frame {i}: width={w}px distance={Z:.2f} mm")
 
 # -----------------------------
 # Plot distance vs frame
@@ -105,8 +131,11 @@ plt.plot(frames, distances, marker='o')
 
 plt.xlabel("Frame Number")
 plt.ylabel("Distance to Object (mm)")
-plt.title("Object Distance vs Frame (Known Object Size)")
+plt.title("Object Distance vs Frame (Known Object Size & Camera Parameters)")
 
 plt.grid()
 
-plt.savefig("time_to_impact_3.png")
+plt.savefig("output3/distance_vs_frame.png")
+
+print("Saved tracking images and distance plot to output3/")
+print("distance from last image: ", distances[-1], "mm")
