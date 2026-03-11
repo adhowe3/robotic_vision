@@ -15,4 +15,4 @@ trajectory/ball_images
 trajectory/out_ball_images
 
 time_to_impact/images
-time_to_impact/output
+time_to_impact/output*
